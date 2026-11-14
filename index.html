@@ -1,10 +1,300 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LB-B Personnel Dashboard</title><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><style>
-:root{font-family:system-ui,'Segoe UI',sans-serif;color:#f5f2ff;background:#100b24}*{box-sizing:border-box}body{margin:0}header{background:linear-gradient(105deg,#30125c,#672b89);padding:25px 5%;border-bottom:3px solid #c6a45b}h1{margin:0;font-size:27px}header p{color:#e3d8f1;margin:6px 0 0}.wrap{max-width:1350px;margin:auto;padding:24px} .panel,.metric{background:#21173b;border:1px solid #483467;border-radius:14px;padding:18px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}.metric b{font-size:29px;color:#f2c870;display:block}.metric small{color:#cbb9e5}.filters{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px;margin:15px 0}label{display:block;font-size:12px;color:#d5c3e8;margin-bottom:5px}input,select{width:100%;background:#120e25;border:1px solid #65547d;border-radius:8px;padding:10px;color:white;font-size:14px}button{border:0;background:#c8a34c;color:#201229;font-weight:700;border-radius:8px;padding:11px 17px;cursor:pointer}.tablewrap{overflow:auto;max-height:570px}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:13px}th{position:sticky;top:0;background:#49316a;color:#f9df9e;text-align:left}td,th{padding:10px;border-bottom:1px solid #423154}tr:hover{background:#35264c}.bar{height:12px;background:#392b51;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:#d1a850}.statrow{display:flex;align-items:center;gap:12px;margin:12px 0}.statrow span{width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.statrow .bar{flex:1}.muted{color:#c3b3d4;font-size:13px}.actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}#message{margin-top:12px;color:#f4d18a}@media(max-width:750px){.filters{grid-template-columns:repeat(2,1fr)}.metrics{grid-template-columns:repeat(2,1fr)}h1{font-size:22px}}
-</style></head><body><header><h1>✦ THAI AIRWAYS · LB-B PERSONNEL DASHBOARD</h1><p>Production Control · Attendance Report · Auto-load Excel from GitHub</p></header><main class="wrap"><div class="panel actions"><div><strong>ข้อมูลจาก Excel: attendance.xlsm</strong><div id="status" class="muted">กำลังโหลดข้อมูล...</div></div><button onclick="loadExcel()">↻ โหลดข้อมูลล่าสุด</button></div><div class="metrics"><div class="metric"><small>รายการที่ค้นพบ</small><b id="count">–</b></div><div class="metric"><small>จำนวน Pers. ไม่ซ้ำ</small><b id="persons">–</b></div><div class="metric"><small>Aircraft ไม่ซ้ำ</small><b id="aircraft">–</b></div><div class="metric"><small>รายการ DAY / NIGHT</small><b id="shifts">–</b></div></div><div class="panel"><strong>ค้นหาและกรองข้อมูล</strong><div class="filters"><div><label>Pers. / Name / คำค้น</label><input id="q" placeholder="พิมพ์เลข Pers. หรือชื่อ"></div><div><label>วันที่เริ่มต้น</label><input type="date" id="from"></div><div><label>วันที่สิ้นสุด</label><input type="date" id="to"></div><div><label>Aircraft Registration</label><select id="reg"><option value="">ทั้งหมด</option></select></div><div><label>Shift (DAY/NIGHT)</label><select id="dn"><option value="">ทั้งหมด</option></select></div></div><button onclick="resetFilters()">ล้างตัวกรอง</button></div><div class="panel" style="margin-top:16px"><strong>สรุปตาม Duty (รายการที่กรอง)</strong><div id="chart" class="muted" style="margin-top:12px">กำลังโหลด...</div></div><div class="panel" style="margin-top:16px"><div class="actions"><strong>Personnel Attendance</strong><span id="shown" class="muted"></span></div><div class="tablewrap" style="margin-top:12px"><table><thead id="head"></thead><tbody id="body"></tbody></table></div><div class="actions" style="margin-top:12px"><span class="muted">แสดงครั้งละ 100 รายการ</span><div><button onclick="changePage(-1)">ก่อนหน้า</button> <span id="page"></span> <button onclick="changePage(1)">ถัดไป</button></div></div></div><p class="muted">ข้อมูลจากไฟล์ Excel บน GitHub Pages · โปรดเผยแพร่เฉพาะข้อมูลที่ได้รับอนุญาต</p></main><script>
-const FILE='attendance.xlsm', keys=['Date','Shift','D/N','Pers.','Name','FUNC','Code','Duty','A/C REG','GROUP','ประเภทงาน','Remark','MMM','DD','YYYY'];let rows=[],filtered=[],page=0;
-const $=id=>document.getElementById(id);function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function dateVal(v){if(v instanceof Date)return isNaN(v)?'':v.toISOString().slice(0,10);if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);if(d)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`}let s=String(v||'');if(/^\d{4}-\d\d-\d\d/.test(s))return s.slice(0,10);let d=new Date(s);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
-async function loadExcel(){try{$('status').textContent='กำลังอ่าน Excel จาก GitHub...';if(!window.XLSX)throw Error('ไม่สามารถโหลดตัวอ่าน Excel ได้ กรุณาตรวจสอบอินเทอร์เน็ต');const res=await fetch(FILE+'?v='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('ไม่พบ attendance.xlsm ใน GitHub (HTTP '+res.status+')');const buf=await res.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:false});const ws=wb.Sheets['LB-B Attendance Report']||wb.Sheets[wb.SheetNames[0]];if(!ws)throw Error('ไม่พบ Sheet');const data=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});rows=data.map(r=>{let o={};for(let k of keys)o[k]=r[k]??'';o._date=dateVal(o.Date);return o}).filter(r=>r['Pers.']!==''||r.Name!=='');for(let [id,key] of [['reg','A/C REG'],['dn','D/N']]){const opts=[...new Set(rows.map(r=>String(r[key]).trim()).filter(Boolean))].sort();$(id).innerHTML='<option value="">ทั้งหมด</option>'+opts.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}const last=rows.map(r=>r._date).filter(Boolean).sort().at(-1)||'–';$('status').textContent=`โหลดสำเร็จ ${rows.length.toLocaleString()} รายการ · วันที่ข้อมูลล่าสุด ${last} · ${new Date().toLocaleString('th-TH')}`;apply()}catch(e){$('status').textContent='เกิดข้อผิดพลาด: '+e.message;$('chart').textContent='ตรวจชื่อไฟล์ Excel และลองรีเฟรชหน้าเว็บ'}}
-function apply(){const q=$('q').value.trim().toLowerCase(),from=$('from').value,to=$('to').value,reg=$('reg').value,dn=$('dn').value;filtered=rows.filter(r=>(!q||[r['Pers.'],r.Name,r.Duty,r.FUNC,r['A/C REG']].some(v=>String(v).toLowerCase().includes(q)))&&(!from||r._date>=from)&&(!to||r._date<=to)&&(!reg||String(r['A/C REG']).trim()===reg)&&(!dn||String(r['D/N']).trim()===dn));page=0;render()}
-function render(){$('count').textContent=filtered.length.toLocaleString();$('persons').textContent=new Set(filtered.map(r=>String(r['Pers.'])).filter(Boolean)).size.toLocaleString();$('aircraft').textContent=new Set(filtered.map(r=>String(r['A/C REG']).trim()).filter(Boolean)).size.toLocaleString();$('shifts').textContent=filtered.filter(r=>/DAY|NIGHT/i.test(String(r['D/N']))).length.toLocaleString();let m={};for(let r of filtered){let x=String(r.Duty||'ไม่ระบุ').trim()||'ไม่ระบุ';m[x]=(m[x]||0)+1}let a=Object.entries(m).sort((x,y)=>y[1]-x[1]).slice(0,8),max=a[0]?.[1]||1;$('chart').innerHTML=a.length?a.map(([n,v])=>`<div class="statrow"><span title="${esc(n)}">${esc(n)}</span><div class="bar"><i style="width:${v/max*100}%"></i></div><b>${v.toLocaleString()}</b></div>`).join(''):'ไม่มีข้อมูล';$('head').innerHTML='<tr>'+keys.map(k=>`<th>${esc(k)}</th>`).join('')+'</tr>';const pages=Math.max(1,Math.ceil(filtered.length/100));page=Math.max(0,Math.min(page,pages-1));$('body').innerHTML=filtered.slice(page*100,(page+1)*100).map(r=>'<tr>'+keys.map(k=>`<td>${esc(k==='Date'?r._date||r[k]:r[k])}</td>`).join('')+'</tr>').join('');$('page').textContent=`${page+1} / ${pages}`;$('shown').textContent=`${filtered.length.toLocaleString()} รายการ`}
-function changePage(n){page+=n;render()}function resetFilters(){for(let id of ['q','from','to','reg','dn'])$(id).value='';apply()}for(let id of ['q','from','to','reg','dn'])$(id).addEventListener(id==='q'?'input':'change',apply);loadExcel();
-</script></body></html>
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LB-B Personnel Dashboard</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#f5f1fa;color:#30213d}
+header{background:linear-gradient(90deg,#35115f,#762c9b);color:white;padding:26px}
+header h1{margin:0}
+main{padding:20px;max-width:1600px;margin:auto}
+#filters,.cards,.charts{display:grid;gap:12px}
+#filters{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));background:white;padding:20px;border-radius:14px}
+label{display:block;font-weight:bold;font-size:12px;margin-bottom:5px}
+input,select{width:100%;padding:9px;border:1px solid #ccc;border-radius:6px}
+button{background:#60268b;color:white;border:0;border-radius:7px;padding:11px 18px;margin:12px 5px 12px 0;cursor:pointer}
+.cards{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:15px 0}
+.charts{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card,.chart,.tablebox{background:white;padding:20px;border-radius:14px}
+.card strong{display:block;font-size:28px;color:#60268b}
+.chart{min-height:200px}
+.bar{display:grid;grid-template-columns:100px 1fr 55px;gap:8px;align-items:center;margin:9px 0;font-size:12px}
+.track{background:#eee;border-radius:6px;height:15px}
+.fill{background:#71329c;height:100%;border-radius:6px}
+.tablebox{overflow:auto;margin-top:15px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:9px;border-bottom:1px solid #ddd;text-align:left;white-space:nowrap}
+th{background:#eee5f5}
+
+.date-range{background:white;border-radius:14px;padding:20px;margin-bottom:14px;border-top:4px solid #d5ab43}
+.range-heading{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.range-heading h2{font-size:19px;margin:0;color:#542079}
+.range-heading span,#dateRangeStatus{font-size:13px;color:#6e6079}
+.date-range-fields{display:grid;grid-template-columns:minmax(240px,1fr) minmax(240px,1fr) auto;gap:16px;align-items:end}
+.date-control{display:flex;gap:8px;align-items:stretch}
+.date-control input{min-width:0;font-size:16px;min-height:44px;border-color:#b6a2c4;flex:1}
+.calendar-button{margin:0;white-space:nowrap;padding:9px 12px}
+.range-actions{display:flex;gap:8px;flex-wrap:wrap}
+.range-actions button{margin:0;min-height:44px}
+.secondary{background:#eee5f5;color:#542079}
+button:disabled{opacity:.55;cursor:wait}
+.aircraft-status{padding:12px 16px;border-radius:10px;background:#eee5f5;color:#542079;font-size:14px;font-weight:600;margin:12px 0 0}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #d5ab43;outline-offset:2px}
+#dateRangeStatus{margin:12px 0 0}#dateRangeError{color:#a21d32;margin-bottom:0;font-weight:600}
+@media(max-width:760px){.date-range-fields{grid-template-columns:1fr}.range-actions button{flex:1}.range-heading{gap:8px}main{padding:12px}header{padding:22px 16px}header h1{font-size:25px}}
+</style>
+</head>
+<body>
+<header>
+<h1>LB-B | PERSONNEL DASHBOARD</h1>
+<p>Attendance Report | Full Data Explorer</p>
+</header>
+<main>
+<section class="date-range" aria-labelledby="dateRangeHeading"><div style="text-align:right"><button type="button" onclick="location.reload()">↻ โหลด Excel ล่าสุด</button></div>
+<div class="range-heading"><h2 id="dateRangeHeading">ค้นหาตามช่วงวันที่</h2><span>เลือกวัน เดือน ปี ค.ศ. จากปฏิทิน</span></div>
+<div class="date-range-fields">
+<div><label for="dateFrom">ตั้งแต่วันที่</label><div class="date-control"><input id="dateFrom" type="date" lang="en-GB" aria-describedby="dateRangeStatus" disabled><button type="button" class="calendar-button" data-picker="dateFrom" aria-label="เปิดปฏิทินวันเริ่มต้น" disabled>📅 ปฏิทิน</button></div></div>
+<div><label for="dateTo">ถึงวันที่</label><div class="date-control"><input id="dateTo" type="date" lang="en-GB" aria-describedby="dateRangeStatus" disabled><button type="button" class="calendar-button" data-picker="dateTo" aria-label="เปิดปฏิทินวันสิ้นสุด" disabled>📅 ปฏิทิน</button></div></div>
+<div class="range-actions"><button type="button" id="todayButton" disabled>วันนี้</button><button type="button" id="clearDates" class="secondary" disabled>ล้างช่วงวันที่</button></div>
+</div>
+<p id="dateRangeStatus" role="status" aria-live="polite">กำลังโหลดข้อมูล…</p><p id="dateRangeError" role="alert" hidden></p>
+</section>
+<section id="filters"></section>
+<p id="aircraftStatus" class="aircraft-status" role="status" aria-live="polite" hidden></p>
+<button disabled onclick="resetFilters()">Reset All Filters</button>
+<button disabled onclick="exportCSV()">Export Filtered CSV</button>
+<section class="cards" id="cards"></section>
+<section class="charts">
+<div class="chart"><h3>Records by Shift</h3><div id="shiftChart"></div></div>
+<div class="chart"><h3>Records by Code</h3><div id="codeChart"></div></div>
+<div class="chart"><h3>Records by GROUP</h3><div id="groupChart"></div></div>
+<div class="chart"><h3>Records by Work Type</h3><div id="typeChart"></div></div>
+</section>
+<div class="tablebox">
+<h3>All Personnel Records</h3>
+<p id="count"></p>
+<div id="table"></div>
+<button onclick="movePage(-1)">Previous</button>
+<button onclick="movePage(1)">Next</button>
+<span id="pageInfo"></span>
+</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+window.LBB_READY=(async()=>{
+ const status=document.getElementById("dateRangeStatus");
+ status.textContent="กำลังโหลดข้อมูลจาก attendance.xlsm ...";
+ if(!window.XLSX) throw Error("โหลดโปรแกรมอ่าน Excel ไม่สำเร็จ");
+ const response=await fetch("./attendance.xlsm?updated="+Date.now(),{cache:"no-store"});
+ if(!response.ok) throw Error("ไม่พบ attendance.xlsm: HTTP "+response.status);
+ const workbook=XLSX.read(await response.arrayBuffer(),{type:"array",cellDates:false});
+ const sheet=workbook.Sheets["LB-B Attendance Report"]||workbook.Sheets[workbook.SheetNames[0]];
+ if(!sheet) throw Error("ไม่พบ Sheet ใน Excel");
+ const grid=XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:false,blankrows:false});
+ const expected=["Date","Shift","D/N","Pers.","Name","FUNC","Code","Duty","A/C REG","GROUP","ประเภทงาน","Remark","MMM","DD","YYYY"];
+ const clean=v=>String(v??"").trim();
+ const headerRow=grid.findIndex(row=>row.some(v=>clean(v).toLowerCase()==="pers.")&&row.some(v=>clean(v).toLowerCase()==="date"));
+ if(headerRow<0) throw Error("ไม่พบหัวตาราง Date และ Pers. ใน Excel");
+ const headers=grid[headerRow].map(clean);
+ const indices=expected.map(h=>headers.findIndex(v=>v.toLowerCase()===h.toLowerCase()));
+ if(indices.some(i=>i<0)) throw Error("คอลัมน์ Excel ไม่ครบ: "+expected.filter((h,j)=>indices[j]<0).join(", "));
+ const rows=grid.slice(headerRow+1).filter(r=>r.some(v=>clean(v)!=="")).map(r=>indices.map(i=>clean(r[i])));
+ window.LBB_DATA={headers:expected,rows};
+ status.textContent="โหลด Excel สำเร็จ "+rows.length.toLocaleString()+" รายการ";
+ return window.LBB_DATA;
+})().catch(err=>{
+ document.getElementById("dateRangeStatus").textContent="โหลด Excel ไม่สำเร็จ: "+err.message;
+ throw err;
+});
+</script>
+<script>
+window.LBB_READY.then(() => {
+const H=window.LBB_DATA.headers;
+const R=window.LBB_DATA.rows;
+function extractAircraftRegistrations(value){
+  const text=String(value??"").toUpperCase();
+  const matches=text.match(/\b(?:HS\s*-\s*[A-Z]{3}|9N-[A-Z]{3}|A5-[A-Z]{3}|B-[A-Z0-9]{3,5}|TC-[A-Z]{3}|T[A-Z]{2})\b/g)||[];
+  return [...new Set(matches.map(value=>{value=value.replace(/\s/g,"");return /^T[A-Z]{2}$/.test(value)?"HS-"+value:value;}))];
+}
+const aircraftByRow=R.map(row=>extractAircraftRegistrations(row[8]));
+const aircraftOptions=[...new Set(aircraftByRow.flat())].sort();
+function aircraftMatches(registrations,raw,query){
+  let value=String(query??"").trim().toUpperCase().replace(/\s/g,"");
+  if(!value)return true;
+  if(/^T[A-Z]{2}$/.test(value))value="HS-"+value;
+  if(/^(?:HS-[A-Z]{3}|9N-[A-Z]{3}|A5-[A-Z]{3}|B-[A-Z0-9]{3,5}|TC-[A-Z]{3})$/.test(value))return registrations.includes(value);
+  return registrations.some(registration=>registration.includes(value))||String(raw??"").toUpperCase().replace(/\s/g,"").includes(value);
+}
+let active=R,page=0;
+const filters=document.getElementById("filters");
+function esc(v){
+return String(v??"").replace(/[&<>"']/g,c=>({
+"&":"&amp;","<":"&lt;",">":"&gt;",
+'"':"&quot;","'":"&#39;"
+})[c]);
+}
+H.forEach((h,i)=>{
+if(i===0) return;
+let box=document.createElement("div");
+let label=document.createElement("label");
+label.textContent=h;
+if(i===8)label.textContent="A/C REG — ทะเบียนเครื่องบิน";
+label.htmlFor="filter-"+i;
+let values=[...new Set(R.map(r=>String(r[i]??"")).filter(Boolean))].sort();
+let el;
+if(i===8){
+el=document.createElement("input");el.type="search";el.placeholder="เลือกหรือพิมพ์ TWB / HS-TWB";
+el.setAttribute("list","aircraftRegistrations");el.setAttribute("autocomplete","off");
+let list=document.createElement("datalist");list.id="aircraftRegistrations";
+aircraftOptions.forEach(registration=>{let option=document.createElement("option");option.value=registration;option.label=registration.replace(/^HS-/,"");list.append(option);});
+box.append(list);
+}else if(values.length<=150){
+el=document.createElement("select");
+el.add(new Option("All "+h,""));
+values.forEach(v=>el.add(new Option(v,v)));
+}else{
+el=document.createElement("input");
+el.placeholder="Search "+h;
+}
+el.id="filter-"+i;
+el.dataset.col=i;
+el.addEventListener("input",apply);
+el.addEventListener("change",apply);
+box.append(label,el);
+filters.append(box);
+});
+const fromInput=document.getElementById("dateFrom"),toInput=document.getElementById("dateTo");
+const dateStatus=document.getElementById("dateRangeStatus"),dateError=document.getElementById("dateRangeError");
+const MONTHS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+function dateKey(year,month,day){
+  if(!Number.isInteger(year)||year<1000||year>9999) return null;
+  const test=new Date(Date.UTC(year,month-1,day));
+  return test.getUTCFullYear()===year&&test.getUTCMonth()===month-1&&test.getUTCDate()===day
+    ? year*10000+month*100+day : null;
+}
+function parseRecordDate(row){
+  const value=String(row[0]??"").trim();let match;
+  if((match=value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/))) return dateKey(+match[1],+match[2],+match[3]);
+  if((match=value.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2}|\d{4})$/))){
+    let year=+match[3],fullYear=Number(row[14]);
+    if(match[3].length===2) year=fullYear>=1000&&fullYear<=9999&&fullYear%100===year ? fullYear : (year<70?2000+year:1900+year);
+    return dateKey(year,MONTHS.indexOf(match[2].toLowerCase())+1,+match[1]);
+  }
+  if((match=value.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/))) return dateKey(+match[3],+match[2],+match[1]);
+  if(!value&&row[12]&&row[13]&&row[14]) return dateKey(+row[14],MONTHS.indexOf(String(row[12]).toLowerCase())+1,+row[13]);
+  return null;
+}
+const recordDates=R.map(parseRecordDate);
+const unknownDateCount=recordDates.filter(value=>value===null).length;
+function inputDateKey(value){return value?Number(value.replaceAll("-","")):null;}
+function describeDate(value){const [year,month,day]=value.split("-");return day+"/"+month+"/"+year;}
+function updateRangeStatus(from,to){
+  const invalid=from!==null&&to!==null&&from>to;
+  dateError.hidden=!invalid;
+  dateError.textContent=invalid?"วันเริ่มต้นต้องไม่เกินวันสิ้นสุด กรุณาเลือกช่วงวันที่ใหม่":"";
+  fromInput.setAttribute("aria-invalid",String(invalid));toInput.setAttribute("aria-invalid",String(invalid));
+  dateStatus.textContent=invalid?"กรุณาตรวจสอบช่วงวันที่":from===null&&to===null?"แสดงทุกวันที่ เลือกเฉพาะวันเริ่มต้นหรือวันสิ้นสุดได้":
+    (from!==null?"ตั้งแต่ "+describeDate(fromInput.value):"ตั้งแต่วันแรกในข้อมูล")+" ถึง "+(to!==null?describeDate(toInput.value):"วันสุดท้ายในข้อมูล")+" (รวมทั้งสองวัน)"+
+    (unknownDateCount?" • ไม่นับ "+unknownDateCount.toLocaleString()+" รายการที่ไม่มีวันที่ที่อ่านได้":"");
+  return !invalid;
+}
+document.querySelectorAll("[data-picker]").forEach(button=>button.addEventListener("click",()=>{
+  const input=document.getElementById(button.dataset.picker);input.focus();
+  if(typeof input.showPicker==="function")try{input.showPicker();}catch(error){input.focus();}
+}));
+[fromInput,toInput].forEach(input=>input.addEventListener("input",apply));
+document.getElementById("clearDates").addEventListener("click",()=>{fromInput.value="";toInput.value="";apply();});
+document.getElementById("todayButton").addEventListener("click",()=>{
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const get=type=>parts.find(part=>part.type===type).value;
+  fromInput.value=toInput.value=get("year")+"-"+get("month")+"-"+get("day");apply();
+});
+function apply(){
+let from=inputDateKey(fromInput.value),to=inputDateKey(toInput.value);
+let valid=updateRangeStatus(from,to);
+let fs=[...filters.querySelectorAll("[data-col]")];
+active=valid?R.filter((r,index)=>{
+let date=recordDates[index];
+return ((from===null&&to===null)||(date!==null&&(from===null||date>=from)&&(to===null||date<=to)))&&fs.every(el=>{
+let v=el.value.toLowerCase();
+let cell=String(r[+el.dataset.col]??"").toLowerCase();
+if(+el.dataset.col===8)return aircraftMatches(aircraftByRow[index],r[8],el.value);
+return !v||(el.tagName==="SELECT"?cell===v:cell.includes(v));
+});
+}):[];
+page=0;render();
+}
+function resetFilters(){
+filters.querySelectorAll("input,select").forEach(e=>e.value="");
+fromInput.value="";toInput.value="";
+apply();
+}
+function counts(i){
+let m=new Map();
+active.forEach(r=>{
+let k=String(r[i]??"")||"(Blank)";
+m.set(k,(m.get(k)||0)+1);
+});
+return [...m].sort((a,b)=>b[1]-a[1]).slice(0,10);
+}
+function chart(id,i){
+let a=counts(i),max=Math.max(1,...a.map(x=>x[1]));
+document.getElementById(id).innerHTML=a.map(([k,n])=>
+'<div class="bar"><span>'+esc(k)+'</span>'+
+'<div class="track"><div class="fill" style="width:'+
+(n/max*100)+'%"></div></div><b>'+n+'</b></div>'
+).join("");
+}
+function render(){
+let aircraftFilter=[...filters.querySelectorAll("[data-col]")].find(el=>+el.dataset.col===8);
+let aircraftStatus=document.getElementById("aircraftStatus");
+aircraftStatus.hidden=!aircraftFilter.value.trim();
+aircraftStatus.textContent=aircraftStatus.hidden?"":"ทะเบียนที่ค้นหา: "+aircraftFilter.value.trim().toUpperCase()+" — "+active.length.toLocaleString()+" รายการ";
+let p=H.indexOf("Pers.");
+let unique=new Set(active.map(r=>r[p]).filter(Boolean)).size;
+document.getElementById("cards").innerHTML=
+[["Total Records",R.length],["Filtered Records",active.length],
+["Unique Personnel",unique]].map(([k,v])=>
+'<div class="card">'+esc(k)+'<strong>'+v.toLocaleString()+
+'</strong></div>').join("");
+chart("shiftChart",1);
+chart("codeChart",6);
+chart("groupChart",9);
+chart("typeChart",10);
+let start=page*100;
+let rows=active.slice(start,start+100);
+document.getElementById("table").innerHTML=
+"<table><thead><tr>"+H.map(h=>"<th>"+esc(h)+"</th>").join("")+
+"</tr></thead><tbody>"+rows.map(r=>"<tr>"+
+r.map(v=>"<td>"+esc(v)+"</td>").join("")+
+"</tr>").join("")+"</tbody></table>";
+document.getElementById("count").textContent=
+active.length.toLocaleString()+" matching records";
+document.getElementById("pageInfo").textContent=
+active.length?(start+1)+" - "+Math.min(start+100,active.length):"0";
+}
+function movePage(d){
+page=Math.max(0,Math.min(Math.ceil(active.length/100)-1,page+d));
+render();
+}
+function exportCSV(){
+let quote=v=>'"'+String(v??"").replaceAll('"','""')+'"';
+let csv="\uFEFF"+[H,...active].map(r=>r.map(quote).join(",")).join("\r\n");
+let url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+let a=document.createElement("a");
+a.href=url;a.download="LBB_Filtered.csv";a.click();
+URL.revokeObjectURL(url);
+}
+Object.assign(window,{resetFilters,exportCSV,movePage});
+document.querySelectorAll("button[disabled],.date-range input[disabled]").forEach(control=>control.disabled=false);
+apply();
+}).catch(error=>{
+  document.getElementById("dateRangeStatus").textContent="โหลดข้อมูลไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ";
+  console.error(error);
+});
+</script>
+</body>
+</html>
