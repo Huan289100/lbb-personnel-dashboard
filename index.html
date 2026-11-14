@@ -63,6 +63,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 <p id="dateRangeStatus" role="status" aria-live="polite">กำลังโหลดข้อมูล…</p><p id="dateRangeError" role="alert" hidden></p>
 </section>
 <section id="filters"></section>
+<div class="sort-toolbar" style="background:white;border-radius:12px;padding:12px 18px;margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<label for="sortOrder" style="margin:0;font-size:14px">↕ เรียงข้อมูล (น้อย → มาก / มาก → น้อย)</label>
+<select id="sortOrder" style="width:auto;min-width:230px;background:#fff;border:1px solid #b6a2c4;padding:10px">
+<option value="date-asc">วันที่: เก่า → ใหม่</option>
+<option value="date-desc">วันที่: ใหม่ → เก่า</option>
+<option value="pers-asc">Pers.: น้อย → มาก</option>
+<option value="pers-desc">Pers.: มาก → น้อย</option>
+</select>
+</div>
 <p id="aircraftStatus" class="aircraft-status" role="status" aria-live="polite" hidden></p>
 <button disabled onclick="resetFilters()">Reset All Filters</button>
 <button disabled onclick="exportCSV()">Export Filtered CSV</button>
@@ -225,8 +234,22 @@ if(+el.dataset.col===8)return aircraftMatches(aircraftByRow[index],r[8],el.value
 return !v||(el.tagName==="SELECT"?cell===v:cell.includes(v));
 });
 }):[];
+// จัดเรียงข้อมูลตามตัวเลือก โดยคงลำดับรองเป็นวันที่และ Pers.
+const sortMode=document.getElementById("sortOrder").value;
+const persCompare=(a,b)=>String(a[3]??"").trim().localeCompare(String(b[3]??"").trim(),"en",{numeric:true,sensitivity:"base"});
+const dateCompare=(a,b)=>{
+ const da=parseRecordDate(a),db=parseRecordDate(b);
+ return da===db?0:da===null?1:db===null?-1:da-db;
+};
+active.sort((a,b)=>{
+ if(sortMode==="pers-asc") return persCompare(a,b)||dateCompare(a,b);
+ if(sortMode==="pers-desc") return -persCompare(a,b)||dateCompare(a,b);
+ if(sortMode==="date-desc") return -dateCompare(a,b)||persCompare(a,b);
+ return dateCompare(a,b)||persCompare(a,b);
+});
 page=0;render();
 }
+document.getElementById("sortOrder").addEventListener("change",apply);
 function resetFilters(){
 filters.querySelectorAll("input,select").forEach(e=>e.value="");
 fromInput.value="";toInput.value="";
